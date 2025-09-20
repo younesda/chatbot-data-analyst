@@ -43,8 +43,9 @@ async def root():
 @app.get("/test-db")
 async def test_db():
     try:
+        from sqlalchemy import text  # Ajoutez cet import
         db = SessionLocal()
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))  # ✅ Version corrigée
         db.close()
         return {"message": "Database connection OK!"}
     except Exception as e:
