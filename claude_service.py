@@ -1,3 +1,4 @@
+#claude_service.py
 from dotenv import load_dotenv
 load_dotenv()  # Charge en premier
 
