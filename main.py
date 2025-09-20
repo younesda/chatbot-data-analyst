@@ -61,27 +61,6 @@ def get_db():
     finally:
         db.close()
 
-# Auth dependency
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-):
-    token = credentials.credentials
-    payload = verify_token(token)
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials"
-        )
-    
-    user = db.query(User).filter(User.id == payload.get("user_id")).first()
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found"
-        )
-    return user
-
 # Auth routes
 @app.post("/auth/register", response_model=UserResponse)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
