@@ -328,6 +328,48 @@ async def get_chat_history(
         for message in messages
     ]
 
+# Dashboard endpoint
+@app.get("/dashboard/{session_id}", response_model=DashboardResponse)
+async def get_dashboard(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.user_id == current_user.id
+    ).first()
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Get CSV data
+    csv_file = db.query(CSVFile).filter(CSVFile.id == session.csv_file_id).first()
+    df = pd.read_csv(io.StringIO(csv_file.file_data.decode('utf-8')))
+    
+    # Generate comprehensive dashboard
+    dashboard = await claude_service.create_full_dashboard(df)
+    
+    return DashboardResponse(
+        session_id=session_id,
+        title=session.title,
+        kpis=dashboard["kpis"],
+        charts=dashboard["charts"],
+        filters=dashboard["filters"],
+        data_summary=dashboard["summary"]
+    )
+
+# Filter dashboard data
+@app.post("/dashboard/{session_id}/filter")
+async def filter_dashboard(
+    session_id: int,
+    filter_data: DashboardFilterRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Apply filters and return updated data
+    pass
+
 # User's CSV files
 @app.get("/csv/files", response_model=List[CSVFileResponse])
 async def get_user_csv_files(
