@@ -17,7 +17,7 @@ from typing import List, Optional
 
 from database import SessionLocal, engine
 from models import Base, User, ChatSession, Message, CSVFile
-from auth import create_access_token, verify_token, get_password_hash, verify_password
+from auth import get_current_user, create_access_token, verify_password, get_password_hash
 from claude_service import ClaudeService
 from schemas import *
 
