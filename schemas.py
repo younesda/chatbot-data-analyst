@@ -64,3 +64,14 @@ class MessageResponse(BaseModel):
     created_at: datetime
     visualization_data: Optional[Dict[str, Any]] = None
     chart_config: Optional[Dict[str, Any]] = None
+
+class DashboardResponse(BaseModel):
+    session_id: int
+    title: str
+    kpis: List[Dict[str, Any]]
+    charts: List[Dict[str, Any]]
+    filters: List[Dict[str, Any]]
+    data_summary: Dict[str, Any]
+
+class DashboardFilterRequest(BaseModel):
+    filters: Dict[str, Any]
