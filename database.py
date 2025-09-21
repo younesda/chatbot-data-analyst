@@ -1,23 +1,24 @@
-#database.py
+import os
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
+
 load_dotenv()
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-import os
-
-# URL Supabase depuis les variables d'environnement
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL must be set for Supabase connection")
+    raise ValueError("DATABASE_URL environment variable is required")
 
-# Configuration optimisée pour Supabase
+# Configuration pour PostgreSQL Supabase
 engine = create_engine(
     DATABASE_URL,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=5,
+    max_overflow=10,
     pool_pre_ping=True,
-    pool_recycle=3600
+    pool_recycle=300,
+    echo=False  # Set to True for SQL debugging
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
