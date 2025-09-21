@@ -1,13 +1,11 @@
-#schemas.py
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 from typing import List, Optional, Any, Dict
 
-# User schemas
 class UserCreate(BaseModel):
     email: EmailStr
-    username: str
-    password: str
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=6)
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -24,15 +22,14 @@ class UserResponse(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    token_type: str
+    token_type: str = "bearer"
     user: UserResponse
 
-# CSV schemas
 class CSVUploadResponse(BaseModel):
     file_id: int
     filename: str
     info: Dict[str, Any]
-    message: str
+    message: str = "CSV uploaded successfully"
 
 class CSVFileResponse(BaseModel):
     id: int
@@ -42,7 +39,6 @@ class CSVFileResponse(BaseModel):
     row_count: int
     created_at: datetime
 
-# Chat schemas
 class ChatSessionCreate(BaseModel):
     csv_file_id: int
     title: Optional[str] = None
@@ -54,8 +50,8 @@ class ChatSessionResponse(BaseModel):
     created_at: datetime
 
 class MessageCreate(BaseModel):
-    content: str
-    request_type: str  # "dashboard", "chart", "table", "explanation"
+    content: str = Field(..., min_length=1)
+    request_type: str = Field(..., regex="^(explanation|chart|table|dashboard)$")
 
 class MessageResponse(BaseModel):
     id: int
@@ -70,8 +66,5 @@ class DashboardResponse(BaseModel):
     title: str
     kpis: List[Dict[str, Any]]
     charts: List[Dict[str, Any]]
-    filters: List[Dict[str, Any]]
-    data_summary: Dict[str, Any]
-
-class DashboardFilterRequest(BaseModel):
-    filters: Dict[str, Any]
+    summary: Dict[str, Any]
+    metadata: Dict[str, Any]
