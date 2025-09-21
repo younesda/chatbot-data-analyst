@@ -1,30 +1,29 @@
-#main.py
-from dotenv import load_dotenv
 import os
-load_dotenv()
-
-# Maintenant les autres imports
+import io
+from datetime import datetime
+from typing import List
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 import pandas as pd
-import json
-import io
-import base64
-from datetime import datetime, timedelta
-from typing import List, Optional
 
-from database import SessionLocal, engine
-from models import Base, User, ChatSession, Message, CSVFile
-from auth import get_current_user, create_access_token, verify_password, get_password_hash
+from database import SessionLocal, engine, Base
+from models import User, CSVFile, ChatSession, Message
+from auth import get_current_user, verify_password, get_password_hash, create_access_token, get_db
 from claude_service import ClaudeService
 from schemas import *
 
-# Create tables
-# Base.metadata.create_all(bind=engine)  # Commenté temporairement
+# Create all tables
+print("🗄️ Creating database tables...")
+Base.metadata.create_all(bind=engine)
+print("✅ Database tables created successfully")
 
-app = FastAPI(title="CSV Chatbot API", version="1.0.0")
+app = FastAPI(
+    title="YounesAI API",
+    description="API pour l'analyse de données CSV avec IA",
+    version="1.0.0"
+)
 
 # CORS
 app.add_middleware(
@@ -35,120 +34,170 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Endpoint de test pour voir si l'app fonctionne
-@app.get("/")
-async def root():
-    return {"message": "API is running!"}
-
-@app.get("/test-db")
-async def test_db():
-    try:
-        from sqlalchemy import text  # Ajoutez cet import
-        db = SessionLocal()
-        db.execute(text("SELECT 1"))  # ✅ Version corrigée
-        db.close()
-        return {"message": "Database connection OK!"}
-    except Exception as e:
-        return {"error": str(e)}
-
-security = HTTPBearer()
+# Initialize Claude service
 claude_service = ClaudeService()
 
-# Database dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Health check endpoints
+@app.get("/")
+async def root():
+    return {
+        "message": "🚀 YounesAI API is running!",
+        "version": "1.0.0",
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "features": [
+            "CSV Upload & Processing",
+            "AI-Powered Data Analysis",
+            "Interactive Chat Interface", 
+            "Dashboard Generation",
+            "Data Visualization"
+        ]
+    }
 
-# Auth routes
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    try:
+        # Test database connection
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        db_status = "healthy"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    
+    return {
+        "status": "healthy",
+        "database": db_status,
+        "claude_service": "initialized",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+# Authentication endpoints
 @app.post("/auth/register", response_model=UserResponse)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    # Check if user exists
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+    """Register a new user"""
+    try:
+        # Check if user already exists
+        existing_user = db.query(User).filter(
+            (User.email == user_data.email) | (User.username == user_data.username)
+        ).first()
+        
+        if existing_user:
+            if existing_user.email == user_data.email:
+                raise HTTPException(status_code=400, detail="Email already registered")
+            else:
+                raise HTTPException(status_code=400, detail="Username already taken")
+        
+        # Create new user
+        hashed_password = get_password_hash(user_data.password)
+        db_user = User(
+            email=user_data.email,
+            username=user_data.username,
+            hashed_password=hashed_password
         )
-    
-    # Create new user
-    hashed_password = get_password_hash(user_data.password)
-    db_user = User(
-        email=user_data.email,
-        username=user_data.username,
-        hashed_password=hashed_password
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
-    return UserResponse(
-        id=db_user.id,
-        email=db_user.email,
-        username=db_user.username,
-        created_at=db_user.created_at
-    )
+        
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        
+        print(f"✅ New user registered: {user_data.email}")
+        
+        return UserResponse(
+            id=db_user.id,
+            email=db_user.email,
+            username=db_user.username,
+            created_at=db_user.created_at
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Registration error: {e}")
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 @app.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == credentials.email).first()
-    
-    if not user or not verify_password(credentials.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password"
+    """Login user and return JWT token"""
+    try:
+        # Find user
+        user = db.query(User).filter(User.email == credentials.email).first()
+        
+        if not user or not verify_password(credentials.password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password"
+            )
+        
+        # Create access token
+        access_token = create_access_token(data={"user_id": user.id})
+        
+        print(f"✅ User logged in: {credentials.email}")
+        
+        return TokenResponse(
+            access_token=access_token,
+            token_type="bearer",
+            user=UserResponse(
+                id=user.id,
+                email=user.email,
+                username=user.username,
+                created_at=user.created_at
+            )
         )
-    
-    access_token = create_access_token(data={"user_id": user.id})
-    
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        user=UserResponse(
-            id=user.id,
-            email=user.email,
-            username=user.username,
-            created_at=user.created_at
-        )
-    )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Login error: {e}")
+        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
-# CSV upload
+# CSV file endpoints
 @app.post("/csv/upload", response_model=CSVUploadResponse)
 async def upload_csv(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only CSV files are allowed"
-        )
+    """Upload and process CSV file"""
+    # Validate file type
+    if not file.filename or not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Only CSV files are allowed")
     
     try:
-        # Read and validate CSV
+        # Read file content
         contents = await file.read()
-        df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
+        if len(contents) == 0:
+            raise HTTPException(status_code=400, detail="File is empty")
         
-        # Store file info in database
+        # Parse CSV
+        try:
+            df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid CSV format: {str(e)}")
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="CSV file contains no data")
+        
+        # Store file in database
         csv_file = CSVFile(
             user_id=current_user.id,
             filename=file.filename,
             file_size=len(contents),
             columns=list(df.columns),
             row_count=len(df),
-            file_data=contents  # In production, store in cloud storage
+            file_data=contents
         )
         
         db.add(csv_file)
         db.commit()
         db.refresh(csv_file)
         
-        # Get basic info about the CSV
+        print(f"📁 CSV uploaded: {file.filename} ({len(df)} rows, {len(df.columns)} columns)")
+        
+        # Prepare file info
         info = {
-            "shape": df.shape,
+            "shape": list(df.shape),
             "columns": list(df.columns),
             "dtypes": df.dtypes.astype(str).to_dict(),
             "sample": df.head(3).to_dict('records'),
@@ -162,19 +211,40 @@ async def upload_csv(
             message="CSV uploaded successfully"
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error processing CSV: {str(e)}"
-        )
+        print(f"❌ Upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
-# Chat sessions
+@app.get("/csv/files", response_model=List[CSVFileResponse])
+async def get_csv_files(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all CSV files for current user"""
+    files = db.query(CSVFile).filter(CSVFile.user_id == current_user.id).order_by(CSVFile.created_at.desc()).all()
+    
+    return [
+        CSVFileResponse(
+            id=file.id,
+            filename=file.filename,
+            file_size=file.file_size,
+            columns=file.columns,
+            row_count=file.row_count,
+            created_at=file.created_at
+        )
+        for file in files
+    ]
+
+# Chat session endpoints
 @app.post("/chat/sessions", response_model=ChatSessionResponse)
 async def create_chat_session(
     session_data: ChatSessionCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """Create a new chat session"""
     # Verify CSV file belongs to user
     csv_file = db.query(CSVFile).filter(
         CSVFile.id == session_data.csv_file_id,
@@ -182,20 +252,21 @@ async def create_chat_session(
     ).first()
     
     if not csv_file:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="CSV file not found"
-        )
+        raise HTTPException(status_code=404, detail="CSV file not found")
     
+    # Create session
+    title = session_data.title or f"Analyse de {csv_file.filename}"
     chat_session = ChatSession(
         user_id=current_user.id,
         csv_file_id=session_data.csv_file_id,
-        title=session_data.title or f"Analysis of {csv_file.filename}"
+        title=title
     )
     
     db.add(chat_session)
     db.commit()
     db.refresh(chat_session)
+    
+    print(f"💬 New chat session created: {title}")
     
     return ChatSessionResponse(
         id=chat_session.id,
@@ -209,6 +280,7 @@ async def get_chat_sessions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """Get all chat sessions for current user"""
     sessions = db.query(ChatSession).filter(
         ChatSession.user_id == current_user.id
     ).order_by(ChatSession.updated_at.desc()).all()
@@ -223,7 +295,6 @@ async def get_chat_sessions(
         for session in sessions
     ]
 
-# Chat messages
 @app.post("/chat/sessions/{session_id}/messages", response_model=MessageResponse)
 async def send_message(
     session_id: int,
@@ -231,6 +302,7 @@ async def send_message(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """Send a message and get AI response"""
     # Verify session belongs to user
     session = db.query(ChatSession).filter(
         ChatSession.id == session_id,
@@ -238,14 +310,17 @@ async def send_message(
     ).first()
     
     if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chat session not found"
-        )
+        raise HTTPException(status_code=404, detail="Chat session not found")
     
     # Get CSV data
     csv_file = db.query(CSVFile).filter(CSVFile.id == session.csv_file_id).first()
-    df = pd.read_csv(io.StringIO(csv_file.file_data.decode('utf-8')))
+    if not csv_file:
+        raise HTTPException(status_code=404, detail="CSV file not found")
+    
+    try:
+        df = pd.read_csv(io.StringIO(csv_file.file_data.decode('utf-8')))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading CSV: {str(e)}")
     
     # Save user message
     user_message = Message(
@@ -257,11 +332,14 @@ async def send_message(
     db.commit()
     
     try:
+        print(f"🤖 Processing {message_data.request_type} request: {message_data.content[:50]}...")
+        
         # Get Claude response
         response = await claude_service.analyze_data(
             user_query=message_data.content,
             df=df,
-            request_type=message_data.request_type
+            request_type=message_data.request_type,
+            session_id=session_id
         )
         
         # Save Claude response
@@ -280,6 +358,8 @@ async def send_message(
         db.commit()
         db.refresh(claude_message)
         
+        print(f"✅ AI response generated successfully")
+        
         return MessageResponse(
             id=claude_message.id,
             content=claude_message.content,
@@ -290,17 +370,17 @@ async def send_message(
         )
         
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing message: {str(e)}"
-        )
+        db.rollback()
+        print(f"❌ Message processing error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing message: {str(e)}")
 
 @app.get("/chat/sessions/{session_id}/messages", response_model=List[MessageResponse])
-async def get_chat_history(
+async def get_messages(
     session_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """Get all messages for a chat session"""
     # Verify session belongs to user
     session = db.query(ChatSession).filter(
         ChatSession.id == session_id,
@@ -308,10 +388,7 @@ async def get_chat_history(
     ).first()
     
     if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chat session not found"
-        )
+        raise HTTPException(status_code=404, detail="Chat session not found")
     
     messages = db.query(Message).filter(
         Message.chat_session_id == session_id
@@ -329,70 +406,52 @@ async def get_chat_history(
         for message in messages
     ]
 
-# Dashboard endpoint
+# Dashboard endpoints
 @app.get("/dashboard/{session_id}", response_model=DashboardResponse)
 async def get_dashboard(
     session_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """Get full dashboard for a session"""
+    # Verify session belongs to user
     session = db.query(ChatSession).filter(
         ChatSession.id == session_id,
         ChatSession.user_id == current_user.id
     ).first()
     
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail="Chat session not found")
     
     # Get CSV data
     csv_file = db.query(CSVFile).filter(CSVFile.id == session.csv_file_id).first()
-    df = pd.read_csv(io.StringIO(csv_file.file_data.decode('utf-8')))
+    if not csv_file:
+        raise HTTPException(status_code=404, detail="CSV file not found")
     
-    # Generate comprehensive dashboard
-    dashboard = await claude_service.create_full_dashboard(df)
-    
-    return DashboardResponse(
-        session_id=session_id,
-        title=session.title,
-        kpis=dashboard["kpis"],
-        charts=dashboard["charts"],
-        filters=dashboard["filters"],
-        data_summary=dashboard["summary"]
-    )
-
-# Filter dashboard data
-@app.post("/dashboard/{session_id}/filter")
-async def filter_dashboard(
-    session_id: int,
-    filter_data: DashboardFilterRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    # Apply filters and return updated data
-    pass
-
-# User's CSV files
-@app.get("/csv/files", response_model=List[CSVFileResponse])
-async def get_user_csv_files(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    files = db.query(CSVFile).filter(
-        CSVFile.user_id == current_user.id
-    ).order_by(CSVFile.created_at.desc()).all()
-    
-    return [
-        CSVFileResponse(
-            id=file.id,
-            filename=file.filename,
-            file_size=file.file_size,
-            columns=file.columns,
-            row_count=file.row_count,
-            created_at=file.created_at
+    try:
+        df = pd.read_csv(io.StringIO(csv_file.file_data.decode('utf-8')))
+        
+        print(f"📊 Generating dashboard for session {session_id}...")
+        
+        # Generate comprehensive dashboard
+        dashboard_data = await claude_service.create_full_dashboard(df)
+        
+        print(f"✅ Dashboard generated successfully")
+        
+        return DashboardResponse(
+            session_id=session_id,
+            title=session.title,
+            kpis=dashboard_data["kpis"],
+            charts=dashboard_data["charts"],
+            summary=dashboard_data["summary"],
+            metadata=dashboard_data["metadata"]
         )
-        for file in files
-    ]
+        
+    except Exception as e:
+        print(f"❌ Dashboard error: {e}")
+        raise HTTPException(status_code=500, detail=f"Dashboard error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
+    print("🚀 Starting YounesAI API server...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
