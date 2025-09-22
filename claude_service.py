@@ -18,7 +18,7 @@ class ClaudeService:
             api_key=os.getenv("ANTHROPIC_API_KEY")
         )
     
-    async def analyze_data(self, user_query: str, df: pd.DataFrame, request_type: str) -> Dict[str, Any]:
+    async def analyze_data(self, user_query: str, df: pd.DataFrame, request_type: str, session_id: int = None) -> Dict[str, Any]:        
         """
         Analyze data using Claude and return response with visualizations
         """
