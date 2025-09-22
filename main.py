@@ -74,83 +74,55 @@ async def health_check():
     }
 
 # Authentication endpoints
-@app.post("/auth/register", response_model=UserResponse)
-async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user"""
+@app.post("/auth/register")
+async def register(user_data: dict, db: Session = Depends(get_db)):
+    """Inscription via Supabase Auth"""
     try:
-        # Check if user already exists
-        existing_user = db.query(User).filter(
-            (User.email == user_data.email) | (User.username == user_data.username)
-        ).first()
+        response = supabase.auth.admin.create_user({
+            "email": user_data["email"],
+            "password": user_data["password"],
+            "user_metadata": {"username": user_data.get("username", user_data["email"].split("@")[0])}
+        })
         
-        if existing_user:
-            if existing_user.email == user_data.email:
-                raise HTTPException(status_code=400, detail="Email already registered")
-            else:
-                raise HTTPException(status_code=400, detail="Username already taken")
-        
-        # Create new user
-        hashed_password = get_password_hash(user_data.password)
-        db_user = User(
-            email=user_data.email,
-            username=user_data.username,
-            hashed_password=hashed_password
-        )
-        
-        db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
-        
-        print(f"✅ New user registered: {user_data.email}")
-        
-        return UserResponse(
-            id=db_user.id,
-            email=db_user.email,
-            username=db_user.username,
-            created_at=db_user.created_at
-        )
-        
-    except HTTPException:
-        raise
+        if response.user:
+            print(f"Utilisateur créé via Supabase: {user_data['email']}")
+            return {
+                "message": "Utilisateur créé avec succès",
+                "user_id": response.user.id,
+                "email": response.user.email
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Échec de création utilisateur")
+            
     except Exception as e:
-        db.rollback()
-        print(f"❌ Registration error: {e}")
-        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
+        print(f"Erreur inscription: {e}")
+        raise HTTPException(status_code=400, detail=f"Erreur inscription: {str(e)}")
 
-@app.post("/auth/login", response_model=TokenResponse)
-async def login(credentials: UserLogin, db: Session = Depends(get_db)):
-    """Login user and return JWT token"""
+@app.post("/auth/login")
+async def login(credentials: dict):
+    """Connexion via Supabase Auth"""
     try:
-        # Find user
-        user = db.query(User).filter(User.email == credentials.email).first()
+        response = supabase.auth.sign_in_with_password({
+            "email": credentials["email"],
+            "password": credentials["password"]
+        })
         
-        if not user or not verify_password(credentials.password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password"
-            )
-        
-        # Create access token
-        access_token = create_access_token(data={"user_id": user.id})
-        
-        print(f"✅ User logged in: {credentials.email}")
-        
-        return TokenResponse(
-            access_token=access_token,
-            token_type="bearer",
-            user=UserResponse(
-                id=user.id,
-                email=user.email,
-                username=user.username,
-                created_at=user.created_at
-            )
-        )
-        
-    except HTTPException:
-        raise
+        if response.session:
+            print(f"Connexion réussie: {credentials['email']}")
+            return {
+                "access_token": response.session.access_token,
+                "token_type": "bearer",
+                "user": {
+                    "id": response.user.id,
+                    "email": response.user.email
+                }
+            }
+        else:
+            raise HTTPException(status_code=401, detail="Identifiants incorrects")
+            
     except Exception as e:
-        print(f"❌ Login error: {e}")
-        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
+        print(f"Erreur connexion: {e}")
+        raise HTTPException(status_code=401, detail="Échec de connexion")
 
 # CSV file endpoints
 @app.post("/csv/upload", response_model=CSVUploadResponse)
