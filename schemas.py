@@ -61,6 +61,7 @@ class MessageResponse(BaseModel):
     created_at: datetime
     visualization_data: Optional[Dict[str, Any]] = None
     chart_config: Optional[Dict[str, Any]] = None
+    show_dashboard: Optional[bool] = False
 
 class DashboardResponse(BaseModel):
     session_id: int
