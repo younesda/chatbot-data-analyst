@@ -200,49 +200,48 @@ Sois didactique et accessible dans tes explications.
         kpis.append({
             "id": "total_records",
             "title": "Total Records",
-            "value": len(df),
+            "value": int(len(df)),  # ✅ Conversion explicite
             "format": "number",
             "icon": "database",
             "color": "blue"
         })
-        
-        # KPI 2: Première colonne numérique - somme ou moyenne
+    
+        # KPI 2: Première colonne numérique
         if numeric_cols:
             main_numeric = numeric_cols[0]
-            total_value = df[main_numeric].sum()
+            total_value = float(df[main_numeric].sum())  # ✅ Conversion explicite
             kpis.append({
-                "id": "main_metric",
+                "id": "main_metric", 
                 "title": f"Total {main_numeric}",
                 "value": total_value,
                 "format": "currency" if any(word in main_numeric.lower() for word in ['price', 'cost', 'revenue', 'sales']) else "number",
                 "icon": "trending-up",
                 "color": "green"
             })
-            
-            # KPI 3: Moyenne de la première colonne numérique
-            avg_value = df[main_numeric].mean()
+        
+            # KPI 3: Moyenne
+            avg_value = float(df[main_numeric].mean())  # ✅ Conversion explicite
             kpis.append({
                 "id": "avg_metric",
-                "title": f"Average {main_numeric}",
+                "title": f"Average {main_numeric}", 
                 "value": round(avg_value, 2),
                 "format": "currency" if any(word in main_numeric.lower() for word in ['price', 'cost', 'revenue', 'sales']) else "number",
                 "icon": "bar-chart",
                 "color": "purple"
             })
-        
-        # KPI 4: Nombre de catégories uniques (première colonne catégorielle)
-        if categorical_cols:
-            main_categorical = categorical_cols[0]
-            unique_count = df[main_categorical].nunique()
-            kpis.append({
-                "id": "unique_categories",
-                "title": f"Unique {main_categorical}",
-                "value": unique_count,
-                "format": "number",
-                "icon": "tag",
-                "color": "orange"
-            })
-        
+    
+            # KPI 4: Catégories uniques
+            if categorical_cols:
+                main_categorical = categorical_cols[0]
+                unique_count = int(df[main_categorical].nunique())  # ✅ Conversion explicite
+                kpis.append({
+                    "id": "unique_categories",
+                    "title": f"Unique {main_categorical}",
+                    "value": unique_count,
+                    "format": "number", 
+                    "icon": "tag",
+                    "color": "orange"
+                })
         return kpis
 
     def _generate_charts(self, df: pd.DataFrame, numeric_cols: list, categorical_cols: list, date_cols: list) -> list:
