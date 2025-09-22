@@ -51,8 +51,8 @@ class ChatSessionResponse(BaseModel):
 
 class MessageCreate(BaseModel):
     content: str = Field(..., min_length=1)
-    request_type: str = Field(..., regex="^(explanation|chart|table|dashboard)$")
-
+    request_type: str = Field(..., pattern="^(explanation|chart|table|dashboard)$")
+    
 class MessageResponse(BaseModel):
     id: int
     content: str
