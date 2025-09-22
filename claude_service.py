@@ -525,6 +525,7 @@ Sois didactique et accessible dans tes explications.
                     "most_frequent": top_values.index[0] if len(top_values) > 0 else None
                 }
             summary["categorical_stats"] = categorical_stats
+        summary = convert_numpy_types(summary)
         
         return summary
     
