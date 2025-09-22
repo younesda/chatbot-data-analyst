@@ -16,9 +16,9 @@ from claude_service import ClaudeService
 from schemas import *
 
 # Create all tables
-print("🗄️ Creating database tables...")
-Base.metadata.create_all(bind=engine)
-print("✅ Database tables created successfully")
+#print("🗄️ Creating database tables...")
+#Base.metadata.create_all(bind=engine)
+#print("✅ Database tables created successfully")
 
 app = FastAPI(
     title="YounesAI API",
