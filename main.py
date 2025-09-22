@@ -73,57 +73,6 @@ async def health_check():
         "timestamp": datetime.utcnow().isoformat()
     }
 
-# Authentication endpoints
-@app.post("/auth/register")
-async def register(user_data: dict, db: Session = Depends(get_db)):
-    """Inscription via Supabase Auth"""
-    try:
-        response = supabase.auth.admin.create_user({
-            "email": user_data["email"],
-            "password": user_data["password"],
-            "user_metadata": {"username": user_data.get("username", user_data["email"].split("@")[0])}
-        })
-        
-        if response.user:
-            print(f"Utilisateur créé via Supabase: {user_data['email']}")
-            return {
-                "message": "Utilisateur créé avec succès",
-                "user_id": response.user.id,
-                "email": response.user.email
-            }
-        else:
-            raise HTTPException(status_code=400, detail="Échec de création utilisateur")
-            
-    except Exception as e:
-        print(f"Erreur inscription: {e}")
-        raise HTTPException(status_code=400, detail=f"Erreur inscription: {str(e)}")
-
-@app.post("/auth/login")
-async def login(credentials: dict):
-    """Connexion via Supabase Auth"""
-    try:
-        response = supabase.auth.sign_in_with_password({
-            "email": credentials["email"],
-            "password": credentials["password"]
-        })
-        
-        if response.session:
-            print(f"Connexion réussie: {credentials['email']}")
-            return {
-                "access_token": response.session.access_token,
-                "token_type": "bearer",
-                "user": {
-                    "id": response.user.id,
-                    "email": response.user.email
-                }
-            }
-        else:
-            raise HTTPException(status_code=401, detail="Identifiants incorrects")
-            
-    except Exception as e:
-        print(f"Erreur connexion: {e}")
-        raise HTTPException(status_code=401, detail="Échec de connexion")
-
 # CSV file endpoints
 @app.post("/csv/upload", response_model=CSVUploadResponse)
 async def upload_csv(
