@@ -4,6 +4,7 @@ load_dotenv()  # Charge en premier
 
 import anthropic
 import pandas as pd
+import numpy as np
 import json
 import plotly.graph_objects as go
 import plotly.express as px
@@ -17,6 +18,20 @@ class ClaudeService:
         self.client = anthropic.Anthropic(
             api_key=os.getenv("ANTHROPIC_API_KEY")
         )
+    
+    def convert_numpy_types(self, obj):
+        """Convert numpy types to native Python types"""
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {key: self.convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self.convert_numpy_types(item) for item in obj]
+        return obj
     
     async def analyze_data(self, user_query: str, df: pd.DataFrame, request_type: str, session_id: int = None) -> Dict[str, Any]:        
         """
@@ -98,8 +113,8 @@ class ClaudeService:
                 "filters": filters,
                 "summary": data_summary,
                 "metadata": {
-                    "total_rows": len(df),
-                    "total_columns": len(df.columns),
+                    "total_rows": int(len(df)),
+                    "total_columns": int(len(df.columns)),
                     "numeric_columns": len(numeric_cols),
                     "categorical_columns": len(categorical_cols),
                     "date_columns": len(date_cols)
@@ -113,6 +128,13 @@ class ClaudeService:
                 "charts": [],
                 "filters": [],
                 "summary": {},
+                "metadata": {
+                    "total_rows": 0,
+                    "total_columns": 0,
+                    "numeric_columns": 0,
+                    "categorical_columns": 0,
+                    "date_columns": 0
+                },
                 "error": str(e)
             }
 
@@ -192,20 +214,6 @@ Sois didactique et accessible dans tes explications.
         
         return prompt
 
-    def convert_numpy_types(obj):
-        """Convert numpy types to native Python types"""
-        if isinstance(obj, np.integer):
-            return int(obj)
-        elif isinstance(obj, np.floating):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        elif isinstance(obj, dict):
-            return {key: convert_numpy_types(value) for key, value in obj.items()}
-        elif isinstance(obj, list):
-            return [convert_numpy_types(item) for item in obj]
-        return obj
-
     def _generate_kpis(self, df: pd.DataFrame, numeric_cols: list, categorical_cols: list, date_cols: list) -> list:
         """Génère les KPIs principaux"""
         kpis = []
@@ -214,7 +222,7 @@ Sois didactique et accessible dans tes explications.
         kpis.append({
             "id": "total_records",
             "title": "Total Records",
-            "value": int(len(df)),  # ✅ Conversion explicite
+            "value": int(len(df)),
             "format": "number",
             "icon": "database",
             "color": "blue"
@@ -223,7 +231,7 @@ Sois didactique et accessible dans tes explications.
         # KPI 2: Première colonne numérique
         if numeric_cols:
             main_numeric = numeric_cols[0]
-            total_value = float(df[main_numeric].sum())  # ✅ Conversion explicite
+            total_value = float(df[main_numeric].sum())
             kpis.append({
                 "id": "main_metric", 
                 "title": f"Total {main_numeric}",
@@ -234,7 +242,7 @@ Sois didactique et accessible dans tes explications.
             })
         
             # KPI 3: Moyenne
-            avg_value = float(df[main_numeric].mean())  # ✅ Conversion explicite
+            avg_value = float(df[main_numeric].mean())
             kpis.append({
                 "id": "avg_metric",
                 "title": f"Average {main_numeric}", 
@@ -244,18 +252,19 @@ Sois didactique et accessible dans tes explications.
                 "color": "purple"
             })
     
-            # KPI 4: Catégories uniques
-            if categorical_cols:
-                main_categorical = categorical_cols[0]
-                unique_count = int(df[main_categorical].nunique())  # ✅ Conversion explicite
-                kpis.append({
-                    "id": "unique_categories",
-                    "title": f"Unique {main_categorical}",
-                    "value": unique_count,
-                    "format": "number", 
-                    "icon": "tag",
-                    "color": "orange"
-                })
+        # KPI 4: Catégories uniques
+        if categorical_cols:
+            main_categorical = categorical_cols[0]
+            unique_count = int(df[main_categorical].nunique())
+            kpis.append({
+                "id": "unique_categories",
+                "title": f"Unique {main_categorical}",
+                "value": unique_count,
+                "format": "number", 
+                "icon": "tag",
+                "color": "orange"
+            })
+        
         return kpis
 
     def _generate_charts(self, df: pd.DataFrame, numeric_cols: list, categorical_cols: list, date_cols: list) -> list:
@@ -314,7 +323,7 @@ Sois didactique et accessible dans tes explications.
             
             # Chart 3: Correlation matrix si plusieurs colonnes numériques
             if len(numeric_cols) >= 2:
-                corr_matrix = df[numeric_cols[:5]].corr()  # Max 5 colonnes pour lisibilité
+                corr_matrix = df[numeric_cols[:5]].corr()
                 fig = px.imshow(
                     corr_matrix,
                     text_auto=True,
@@ -427,9 +436,9 @@ Sois didactique et accessible dans tes explications.
         filters = []
         
         # Filtres pour colonnes catégorielles
-        for col in categorical_cols[:3]:  # Max 3 pour éviter surcharge
+        for col in categorical_cols[:3]:
             unique_values = df[col].dropna().unique().tolist()
-            if len(unique_values) <= 50:  # Eviter trop d'options
+            if len(unique_values) <= 50:
                 filters.append({
                     "id": f"filter_{col}",
                     "column": col,
@@ -440,7 +449,7 @@ Sois didactique et accessible dans tes explications.
                 })
         
         # Filtres pour colonnes numériques (range)
-        for col in numeric_cols[:2]:  # Max 2 ranges
+        for col in numeric_cols[:2]:
             min_val = float(df[col].min())
             max_val = float(df[col].max())
             filters.append({
@@ -455,7 +464,7 @@ Sois didactique et accessible dans tes explications.
             })
         
         # Filtres pour dates
-        for col in date_cols[:1]:  # Max 1 date filter
+        for col in date_cols[:1]:
             try:
                 df_temp = df.copy()
                 df_temp[col] = pd.to_datetime(df_temp[col], errors='coerce')
@@ -484,10 +493,10 @@ Sois didactique et accessible dans tes explications.
         
         summary = {
             "overview": {
-                "total_rows": len(df),
-                "total_columns": len(df.columns),
-                "missing_values": df.isnull().sum().sum(),
-                "duplicate_rows": df.duplicated().sum(),
+                "total_rows": int(len(df)),
+                "total_columns": int(len(df.columns)),
+                "missing_values": int(df.isnull().sum().sum()),
+                "duplicate_rows": int(df.duplicated().sum()),
                 "memory_usage": f"{df.memory_usage(deep=True).sum() / 1024**2:.2f} MB"
             },
             "column_types": {
@@ -504,28 +513,30 @@ Sois didactique et accessible dans tes explications.
         # Statistiques numériques
         if numeric_cols:
             numeric_stats = {}
-            for col in numeric_cols[:5]:  # Top 5 numeric columns
+            for col in numeric_cols[:5]:
                 numeric_stats[col] = {
-                    "mean": round(df[col].mean(), 2),
-                    "median": round(df[col].median(), 2),
-                    "std": round(df[col].std(), 2),
-                    "min": round(df[col].min(), 2),
-                    "max": round(df[col].max(), 2)
+                    "mean": round(float(df[col].mean()), 2),
+                    "median": round(float(df[col].median()), 2),
+                    "std": round(float(df[col].std()), 2),
+                    "min": round(float(df[col].min()), 2),
+                    "max": round(float(df[col].max()), 2)
                 }
             summary["numeric_stats"] = numeric_stats
         
         # Top catégories
         if categorical_cols:
             categorical_stats = {}
-            for col in categorical_cols[:3]:  # Top 3 categorical columns
+            for col in categorical_cols[:3]:
                 top_values = df[col].value_counts().head(5)
                 categorical_stats[col] = {
-                    "unique_count": df[col].nunique(),
-                    "top_values": top_values.to_dict(),
-                    "most_frequent": top_values.index[0] if len(top_values) > 0 else None
+                    "unique_count": int(df[col].nunique()),
+                    "top_values": {str(k): int(v) for k, v in top_values.to_dict().items()},
+                    "most_frequent": str(top_values.index[0]) if len(top_values) > 0 else None
                 }
             summary["categorical_stats"] = categorical_stats
-        summary = convert_numpy_types(summary)
+        
+        # Convert any remaining numpy types
+        summary = self.convert_numpy_types(summary)
         
         return summary
     
@@ -533,13 +544,13 @@ Sois didactique et accessible dans tes explications.
         """Generate appropriate visualization based on request type and data"""
         
         try:
-            if request_type == "dashboard":
-                return self._create_dashboard(df)
-            elif request_type == "chart":
+            # Ne générer des visualisations QUE si explicitement demandées
+            if request_type == "chart":
                 return self._create_chart(df, user_query)
             elif request_type == "table":
                 return self._create_table(df)
             else:
+                # Pour "explanation" et "dashboard", pas de visualisation
                 return {"data": None, "config": None}
                 
         except Exception as e:
@@ -555,8 +566,8 @@ Sois didactique et accessible dans tes explications.
         
         # Basic stats
         dashboard_data["summary_stats"] = {
-            "total_rows": len(df),
-            "total_columns": len(df.columns),
+            "total_rows": int(len(df)),
+            "total_columns": int(len(df.columns)),
             "numeric_columns": len(df.select_dtypes(include='number').columns),
             "categorical_columns": len(df.select_dtypes(include='object').columns)
         }
@@ -633,8 +644,8 @@ Sois didactique et accessible dans tes explications.
         table_data = {
             "data": df.head(100).to_dict('records'),
             "columns": list(df.columns),
-            "total_rows": len(df),
-            "dtypes": df.dtypes.astype(str).to_dict()
+            "total_rows": int(len(df)),
+            "dtypes": {str(k): str(v) for k, v in df.dtypes.astype(str).to_dict().items()}
         }
         
         return {
