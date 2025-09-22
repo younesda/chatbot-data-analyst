@@ -1,3 +1,4 @@
+#models.py
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, JSON, LargeBinary
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
